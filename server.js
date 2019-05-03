@@ -62,6 +62,7 @@ let delByLocId = (table, location_id) => {
 
 const timeouts = {
   weather: 15 * 1000,
+  event: 3600 * 24 * 1000,
 };
 
 //--------------------------------
@@ -81,6 +82,9 @@ let errorMessage = (error, response) => {
 
 // Constructor functions which filter the data from the query response that we are interested in.
 
+//--------------------------------
+// Locations
+//--------------------------------
 function CityLocation(query, data) {
   this.search_query = query;
   this.formatted_query = data.formatted_address;
@@ -89,8 +93,6 @@ function CityLocation(query, data) {
 }
 
 CityLocation.tableName = 'locations';
-
-// Static function
 
 CityLocation.fetchLocation = (query) => {
   const url = `https://maps.googleapis.com/maps/api/geocode/json?address=${query}&key=${process.env.GEOCODE_API_KEY}`;
@@ -134,6 +136,12 @@ CityLocation.prototype.save = function(){
   return client.query(SQL, values);
 };
 
+
+//--------------------------------
+// Weather
+//--------------------------------
+
+
 function Weather(day) {
   this.forecast = day.summary;
   this.time = new Date(day.time * 1000).toString().slice(0, 15);
@@ -169,15 +177,46 @@ Weather.prototype.save = function(id){
   return client.query(SQL, values);
 };
 
+
+//--------------------------------
+// Events
+//--------------------------------
+
+
 function Events(location) {
   let time = Date.parse(location.start.local);
-  let newDate = new Date(time).toDateString();
-  this.event_date = newDate;
+  this.event_date = new Date(time).toDateString();
   this.link = location.url;
   this.name = location.name.text;
   this.summary = location.summary;
 }
+Events.tableName = 'weathers';
+Events.lookup = lookup;
+Events.delByLocId = delByLocId;
 
+Events.fetchEvent = (location) => {
+  const url = `https://www.eventbriteapi.com/v3/events/search?token=${process.env.EVENTBRITE_API_KEY}&location.address=${location.formatted_query}`;
+  return superagent.get(url)
+    .then(result => {
+      const eventSum = result.body.events.map(event => {
+        const summary = new Events(event);
+        summary.save(location.id);
+        return summary;
+      });
+      return eventSum;
+    });
+};
+
+Events.prototype.save = function(id){
+  const SQL = `INSERT INTO events
+    (date, link, name, summary, created_at, location_id)
+    VALUES ($1, $2, $3, $4, $5, $6);`;
+
+  const values = Object.values(this);
+  values.push(id);
+
+  return client.query(SQL, values);
+};
 //--------------------------------
 // Route Callbacks
 //--------------------------------
@@ -202,7 +241,6 @@ let searchCoords = (request, response) => {
 };
 
 let searchWeather = (request, response) => {
-  // console.log(request);
   const weatherHandler = {
     location: request.query.data,
     tableName: Weather.tableName,
@@ -227,39 +265,30 @@ let searchWeather = (request, response) => {
   Weather.lookup(weatherHandler);
 };
 
-// let searchWeather = (request, response) => {
-//   const data = request.query.data;
-//   const url = `https://api.darksky.net/forecast/${process.env.DARKSKY_API_KEY}/${data.latitude},${data.longitude}`;
-//   return superagent.get(url)
-//     .then(result => {
-//       const weatherSum = result.body.daily.data.map( day => {
-//         return new Weather(day);
-//       });
-//       response.send(weatherSum);
-//     })
-//     .catch(error => errorMessage(error, response));
-// };
-
 let seachEvents = (request, response) => {
-  const data = request.query.data;
-  const url = `https://www.eventbriteapi.com/v3/events/search?token=${process.env.EVENTBRITE_API_KEY}&location.address=${data.formatted_query}`;
-
-  return superagent.get(url)
-    .then(result => {
-
-      const eventSum = result.body.events.map( eventInfo => {
-        return new Events(eventInfo);
-      });
-      response.send(eventSum);
-    })
-    .catch(error => errorMessage(error, response));
-};
-
-// Dynamic lookup function
-
-// let dynamicLookup = (request, response) => {
-  
-// };
+  const eventHandler = {
+    location: request.query.data,
+    tableName: Events.tableName,
+    cacheHit: function(result){
+      let ageOfRes = (Date.now() -result.rows[0].created_at);
+      if (ageOfRes > timeouts.events){
+        console.log('event cash is invailid');
+        Events.delByLocId(Events.tableName, request.query.data.id );
+        this.cacheMiss();
+      } else {
+        console.log('Events cash valid');
+        response.send(result.rows);
+      }
+    },
+    cacheMiss: () => {
+      console.log('fetching weather');
+      Events.fetchEvent(request.query.data)
+      .then(results => response.send(results))
+      .catch(console.error);
+    }
+    };
+    Events.lookup(eventHandler);
+  };
 
 //--------------------------------
 // Routes
