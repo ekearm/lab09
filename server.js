@@ -271,7 +271,7 @@ let seachEvents = (request, response) => {
     tableName: Events.tableName,
     cacheHit: function(result){
       let ageOfRes = (Date.now() -result.rows[0].created_at);
-      if (ageOfRes > timeouts.events){
+      if (ageOfRes > timeouts.event){
         console.log('event cash is invailid');
         Events.delByLocId(Events.tableName, request.query.data.id );
         this.cacheMiss();
