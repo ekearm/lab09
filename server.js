@@ -37,6 +37,34 @@ const app = express();
 app.use(cors());
 
 //--------------------------------
+// Helper Func
+//--------------------------------
+
+let lookup = (handler) => {
+  const SQL = `SELECT * FROM ${handler.tableName} WHERE location_id=$1`;
+
+  return client.query(SQL, [handler.location.id])
+    .then(result => {
+      if (result.rowCount > 0){
+        handler.cacheHit(result);
+      }else {
+        handler.cacheMiss();
+      }
+    })
+    .catch(errorMessage);
+};
+
+let delByLocId = (table, location_id) => {
+  const SQL = `DELETE FROM ${table} WHERE location_id=${location_id}`;
+
+  return client.query(SQL);
+};
+
+const timeouts = {
+  weather: 15 * 1000,
+};
+
+//--------------------------------
 // Error Message
 //--------------------------------
 
@@ -59,6 +87,8 @@ function CityLocation(query, data) {
   this.latitude = data.geometry.location.lat;
   this.longitude = data.geometry.location.lng;
 }
+
+CityLocation.tableName = 'locations';
 
 // Static function
 
@@ -107,46 +137,34 @@ CityLocation.prototype.save = function(){
 function Weather(day) {
   this.forecast = day.summary;
   this.time = new Date(day.time * 1000).toString().slice(0, 15);
+  this.created_at = Date.now();
 }
 
-Weather.fetchWeather = (query) => {
-  const url = `https://api.darksky.net/forecast/${process.env.DARKSKY_API_KEY}/${query.latitude},${query.longitude}`;
+Weather.tableName = 'weathers';
+Weather.lookup = lookup;
+Weather.delByLocId = delByLocId;
+
+Weather.fetchWeather = (location) => {
+  const url = `https://api.darksky.net/forecast/${process.env.DARKSKY_API_KEY}/${location.latitude},${location.longitude}`;
 
   return superagent.get(url)
     .then(result => {
-      console.log(result.body);
-      if (!result.body.daily.data.length) throw 'No data';
-      const weatherSum = result.body.daily.data.map( day => new Weather(day));
-      return weatherSum.save()
-        .then(result => {
-          weatherSum.id = result.rows[0].id;
-          return weatherSum;
-        });
-    })
-    .catch(console.error);
+      const weatherSum = result.body.daily.data.map(day => {
+        const summary = new Weather(day);
+        summary.save(location.id);
+        return summary;
+      });
+      return weatherSum;
+    });
 };
 
-Weather.lookup = handler => {
-  const SQL = 'SELECT * FROM weathers WHERE forecast=$1;';
-  const values = [handler.query];
-  return client.query(SQL, values)
-    .then(results => {
-      if(results.rowCount > 0){
-        handler.cacheHit(results);
-      }else{
-        handler.cacheMiss(results);
-      }
-    })
-    .catch(console.error);
-};
+Weather.prototype.save = function(id){
+  const SQL = `INSERT INTO weathers
+    (forecast, time, created_at, location_id)
+    VALUES ($1, $2, $3, $4);`;
 
-Weather.prototype.save = function(){
-  let SQL = `INSERT INTO weathers
-    (forecast, time, location_id)
-    VALUES ($1, $2, $3)
-    RETURNING id;`;
-
-  let values = Object.values(this);
+  const values = Object.values(this);
+  values.push(id);
 
   return client.query(SQL, values);
 };
@@ -175,8 +193,7 @@ let searchCoords = (request, response) => {
       
     },
     cacheMiss: () => {
-      console.log('Fetching ...');
-      // console.log(request.query.data);
+      console.log('Fetching location....');
       CityLocation.fetchLocation(request.query.data)
         .then(results => response.send(results));
     }
@@ -187,16 +204,24 @@ let searchCoords = (request, response) => {
 let searchWeather = (request, response) => {
   // console.log(request);
   const weatherHandler = {
-    query: request.query.data,
-    cacheHit: results => {
-      console.log('Got weather data from DB');
-      response.send(results[0]);
-      console.log('here');
+    location: request.query.data,
+    tableName: Weather.tableName,
+    cacheHit: function(result){
+      let ageOfRes = (Date.now() - result.rows[0].created_at);
+      if (ageOfRes > timeouts.weather){
+        console.log('weather cash is invaild');
+        Weather.delByLocId(Weather.tableName, request.query.data.id);
+        this.cacheMiss();
+      }else {
+        console.log('Weather cash valid');
+        response.send(result.rows);
+      }
     },
     cacheMiss: () => {
-      console.log('Fetching weather data....');
+      console.log('fetching weather');
       Weather.fetchWeather(request.query.data)
-        .then(results => response.send(results));
+        .then(results => response.send(results))
+        .catch(console.error);
     }
   };
   Weather.lookup(weatherHandler);
