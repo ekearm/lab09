@@ -1,6 +1,6 @@
 DROP TABLE IF EXISTS  weathers;
-DROP TABLE IF EXISTS  locations;
 DROP TABLE IF EXISTS events;
+DROP TABLE IF EXISTS locations;
 
 CREATE TABLE locations (
   id SERIAL PRIMARY KEY,
