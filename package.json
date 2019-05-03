@@ -6,13 +6,14 @@
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1",
     "start": "node server.js",
-    "watch": "nodemon server.js"
+    "watch": "nodemon server.js",
+    "seedRemote": "psql $DATABASE_URL -f schema.sql"
   },
   "repository": {
     "type": "git",
     "url": ""
   },
-  "author": "Felipe Delatorre Matt Wilkin",
+  "author": "Ed Dearment Matt Wilkin",
   "license": "MIT",
   "bugs": {
     "url": "https://github.com/mwilkin/lab-08-back-end.git"
