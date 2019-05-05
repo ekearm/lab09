@@ -169,9 +169,10 @@ Weather.fetchWeather = (location) => {
 Weather.prototype.save = function(id){
   const SQL = `INSERT INTO weathers
     (forecast, time, created_at, location_id)
-    VALUES ($1, $2, $3, $4);`;
+    VALUES ($1, $2, $3, $4)
+    RETURNING id;`;
 
-  const values = Object.values(this);
+  let values = Object.values(this);
   values.push(id);
 
   return client.query(SQL, values);
@@ -189,6 +190,7 @@ function Events(location) {
   this.link = location.url;
   this.name = location.name.text;
   this.summary = location.summary;
+  this.created_at = Date.now();
 }
 Events.tableName = 'weathers';
 Events.lookup = lookup;
