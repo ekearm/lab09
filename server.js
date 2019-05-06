@@ -230,6 +230,7 @@ function Movies(location) {
   this.released_on = location.release_date;
   this.total_votes = location.vote_count;
   this.average_votes = location.vote_average;
+  this.popularity = location.popularity;
   this.overview = location.overview;
   this.image_url = `https://image.tmdb.org/t/p/original${location.poster_path}`;
   this.created_at = Date.now();
@@ -355,7 +356,7 @@ let searchMovies = (request, response) => {
       }
     },
     cacheMiss: () => {
-      console.log('Feting movies...');
+      console.log('Fetching movies...');
       Movies.fetchMovie(request.query.data)
         .then(results => response.send(results))
         .catch(console.error);
