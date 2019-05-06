@@ -450,7 +450,7 @@ app.get('/location', searchCoords);
 app.get('/weather', searchWeather);
 app.get('/events', seachEvents);
 app.get('/movies', searchMovies);
-app.get('/yelps', searchYelps);
+app.get('/yelp', searchYelps);
 
 
 //--------------------------------
