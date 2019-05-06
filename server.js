@@ -64,6 +64,7 @@ const timeouts = {
   weather: 15 * 1000, //15 seconds per request
   event: 60 * 60 * 1000, //hourly update for latest events
   movie: 60 * 60 * 24 * 1000, // daily movies updates
+  yelp: 60 * 60 * 4 * 1000 // update every 4 hours
 };
 
 //--------------------------------
@@ -266,6 +267,50 @@ Movies.fetchMovie = (location) => {
 };
 
 //--------------------------------
+// Yelps
+//--------------------------------
+
+function Yelp(location) {
+  this.name = location.name;
+  this.rating = location.rating;
+  this.price = location.price;
+  this.url = location.url;
+  this.image_url = location.image_url;
+  this.created_at = Date.now();
+}
+
+Yelp.tableName = 'yelps';
+Yelp.lookup = lookup;
+Yelp.deleteByLocationId = deleteByLocationId;
+
+Yelp.prototype.save = function(id){
+  const SQL = `INSERT INTO yelps
+    (name, rating, price, url, image_url, created_at, location_id)
+    VALUES ($1, $2, $3, $4, $5, $6, $7);`;
+
+  let values = Object.values(this);
+  values.push(id);
+
+  return client.query(SQL, values);
+};
+
+Yelp.fetchYelp = (location) => {
+  const url = `https://api.yelp.com/v3/businesses/search?location=${location.search_query}`;
+
+  return superagent.get(url)
+    .set('Authorization', `Bearer ${process.env.YELP_API_KEY}`)
+    .then(result => {
+      const yelpSummaries = result.body.businesses.map(review => {
+        const summary = new Yelp(review);
+        summary.save(location.id);
+        return summary;
+      });
+      return yelpSummaries;
+    })
+    .catch(console.error);
+};
+
+//--------------------------------
 // Route Callbacks
 //--------------------------------
 
@@ -366,6 +411,31 @@ let searchMovies = (request, response) => {
 };
 
 // Yelps
+let searchYelps = (request, response) => {
+  const eventHandler = {
+    location: request.query.data,
+    tableName: Yelp.tableName,
+    cacheHit: function(result){
+      let ageOfResults = (Date.now() - result.rows[0].created_at);
+      if(ageOfResults > timeouts.yelp){
+        console.log('Yelp cache was invalid');
+        Yelp.deleteByLocationId(Yelp.tableName, request.query.data.id);
+        this.cacheMiss;
+      } else {
+        console.log('Yelp cache was valid');
+        response.send(result.rows);
+      }
+    },
+    cacheMiss: () => {
+      console.log('Fetching yelps...');
+      Yelp.fetchYelp(request.query.data)
+        .then(results => response.send(results))
+        .catch(console.error);
+    }
+  };
+  Yelp.lookup(eventHandler);
+};
+
 
 //--------------------------------
 // Routes
@@ -377,6 +447,8 @@ app.get('/location', searchCoords);
 app.get('/weather', searchWeather);
 app.get('/events', seachEvents);
 app.get('/movies', searchMovies);
+app.get('/yelps', searchYelps);
+
 
 //--------------------------------
 // Power On
