@@ -14,6 +14,13 @@ const superagent = require('superagent');
 const pg = require('pg');
 
 //--------------------------------
+// Application setup
+//--------------------------------
+const PORT = process.env.PORT || 3000;
+const app = express();
+app.use(cors());
+
+//--------------------------------
 // Database Configuration
 //--------------------------------
 // 1. Create a client with connection url
@@ -27,14 +34,6 @@ client.connect();
 // 3. Add event listeners
 
 client.on('err', err => console.log(err));
-
-
-//--------------------------------
-// Application setup
-//--------------------------------
-const PORT = process.env.PORT || 3000;
-const app = express();
-app.use(cors());
 
 //--------------------------------
 // Helper Func
