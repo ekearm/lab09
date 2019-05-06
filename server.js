@@ -54,15 +54,16 @@ let lookup = (handler) => {
     .catch(errorMessage);
 };
 
-let delByLocId = (table, location_id) => {
+let deleteByLocationId = (table, location_id) => {
   const SQL = `DELETE FROM ${table} WHERE location_id=${location_id}`;
 
   return client.query(SQL);
 };
 
 const timeouts = {
-  weather: 15 * 1000,
-  event: 3600 * 24 * 1000,
+  weather: 15 * 1000, //15 seconds per request
+  event: 60 * 60 * 1000, //hourly update for latest events
+  movie: 60 * 60 * 24 * 1000, // daily movies updates
 };
 
 //--------------------------------
@@ -85,6 +86,7 @@ let errorMessage = (error, response) => {
 //--------------------------------
 // Locations
 //--------------------------------
+
 function CityLocation(query, data) {
   this.search_query = query;
   this.formatted_query = data.formatted_address;
@@ -136,11 +138,9 @@ CityLocation.prototype.save = function(){
   return client.query(SQL, values);
 };
 
-
 //--------------------------------
 // Weather
 //--------------------------------
-
 
 function Weather(day) {
   this.forecast = day.summary;
@@ -150,7 +150,7 @@ function Weather(day) {
 
 Weather.tableName = 'weathers';
 Weather.lookup = lookup;
-Weather.delByLocId = delByLocId;
+Weather.deleteByLocationId = deleteByLocationId;
 
 Weather.fetchWeather = (location) => {
   const url = `https://api.darksky.net/forecast/${process.env.DARKSKY_API_KEY}/${location.latitude},${location.longitude}`;
@@ -163,7 +163,8 @@ Weather.fetchWeather = (location) => {
         return summary;
       });
       return weatherSum;
-    });
+    })
+    .catch(console.error);
 };
 
 Weather.prototype.save = function(id){
@@ -177,11 +178,9 @@ Weather.prototype.save = function(id){
   return client.query(SQL, values);
 };
 
-
 //--------------------------------
 // Events
 //--------------------------------
-
 
 function Events(location) {
   let time = Date.parse(location.start.local);
@@ -191,9 +190,10 @@ function Events(location) {
   this.summary = location.summary;
   this.created_at = Date.now();
 }
+
 Events.tableName = 'weathers';
 Events.lookup = lookup;
-Events.delByLocId = delByLocId;
+Events.deleteByLocationId = deleteByLocationId;
 
 Events.fetchEvent = (location) => {
   const url = `https://www.eventbriteapi.com/v3/events/search?token=${process.env.EVENTBRITE_API_KEY}&location.address=${location.formatted_query}`;
@@ -205,7 +205,8 @@ Events.fetchEvent = (location) => {
         return summary;
       });
       return eventSum;
-    });
+    })
+    .catch(console.error);
 };
 
 Events.prototype.save = function(id){
@@ -218,12 +219,56 @@ Events.prototype.save = function(id){
 
   return client.query(SQL, values);
 };
+
+
+//--------------------------------
+// Movies
+//--------------------------------
+
+function Movies(location) {
+  this.title = location.title;
+  this.released_on = location.release_date;
+  this.total_votes = location.vote_count;
+  this.average_votes = location.vote_average;
+  this.overview = location.overview;
+  this.image_url = `https://image.tmdb.org/t/p/original${location.poster_path}`;
+  this.created_at = Date.now();
+}
+
+Movies.tableName = 'movies';
+Movies.lookup = lookup;
+Movies.deleteByLocationId = deleteByLocationId;
+
+Movies.prototype.save = function(id){
+  const SQL = `INSERT INTO movies
+    (title, released_on, total_votes, average_votes, popularity, overview, image_url, created_at, location_id)
+    VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9);`;
+
+  let values = Object.values(this);
+  values.push(id);
+
+  return client.query(SQL, values);
+};
+
+Movies.fetchMovie = (location) => {
+  const url = `https://api.themoviedb.org/3/movie/now_playing?api_key=${process.env.MOVIE_API_KEY}&language=en-US&page=1`;
+  return superagent.get(url)
+    .then(result => {
+      const movieSummaries = result.body.results.map(movie => {
+        const summary = new Movies(movie);
+        summary.save(location.id);
+        return summary;
+      });
+      return movieSummaries;
+    })
+    .catch(console.error);
+};
+
 //--------------------------------
 // Route Callbacks
 //--------------------------------
 
-// API callback functions that reach out to the internet to the specified APIs for desired data. One for each API serve we are hitting.
-
+// Locations
 let searchCoords = (request, response) => {
   const locationHandler = {
     query: request.query.data,
@@ -241,6 +286,7 @@ let searchCoords = (request, response) => {
   CityLocation.lookup(locationHandler);
 };
 
+// Weathers
 let searchWeather = (request, response) => {
   const weatherHandler = {
     location: request.query.data,
@@ -249,7 +295,7 @@ let searchWeather = (request, response) => {
       let ageOfRes = (Date.now() - result.rows[0].created_at);
       if (ageOfRes > timeouts.weather){
         console.log('Weather cache is invaild');
-        Weather.delByLocId(Weather.tableName, request.query.data.id);
+        Weather.deleteByLocationId(Weather.tableName, request.query.data.id);
         this.cacheMiss();
       }else {
         console.log('Weather cache valid');
@@ -266,15 +312,16 @@ let searchWeather = (request, response) => {
   Weather.lookup(weatherHandler);
 };
 
+// Events
 let seachEvents = (request, response) => {
   const eventHandler = {
     location: request.query.data,
     tableName: Events.tableName,
     cacheHit: function(result){
-      let ageOfRes = (Date.now() -result.rows[0].created_at);
+      let ageOfRes = (Date.now() - result.rows[0].created_at);
       if (ageOfRes > timeouts.event){
         console.log('Event cache is invailid');
-        Events.delByLocId(Events.tableName, request.query.data.id );
+        Events.deleteByLocationId(Events.tableName, request.query.data.id);
         this.cacheMiss();
       } else {
         console.log('Events cache valid');
@@ -291,6 +338,34 @@ let seachEvents = (request, response) => {
   Events.lookup(eventHandler);
 };
 
+// Movies
+let searchMovies = (request, response) => {
+  const eventHandler = {
+    location: request.query.data,
+    tableName: Movies.tableName,
+    cacheHit: function(result){
+      let ageOfResults = (Date.now() - result.rows[0].created_at);
+      if(ageOfResults > timeouts.movie){
+        console.log('Movie cache was invalid');
+        Movies.deleteByLocationId(Movies.tableName, request.query.data.id);
+        this.cacheMiss;
+      } else {
+        console.log('Movie cache was valid');
+        response.send(result.rows);
+      }
+    },
+    cacheMiss: () => {
+      console.log('Feting movies...');
+      Movies.fetchMovie(request.query.data)
+        .then(results => response.send(results))
+        .catch(console.error);
+    }
+  };
+  Movies.lookup(eventHandler);
+};
+
+// Yelps
+
 //--------------------------------
 // Routes
 //--------------------------------
@@ -300,6 +375,7 @@ let seachEvents = (request, response) => {
 app.get('/location', searchCoords);
 app.get('/weather', searchWeather);
 app.get('/events', seachEvents);
+app.get('/movies', searchMovies);
 
 //--------------------------------
 // Power On

@@ -1,5 +1,6 @@
 DROP TABLE IF EXISTS weathers;
 DROP TABLE IF EXISTS events;
+DROP TABLE IF EXISTS movies;
 DROP TABLE IF EXISTS locations;
 
 CREATE TABLE locations (
@@ -28,4 +29,19 @@ CREATE TABLE events (
   created_at BIGINT,
   location_id INTEGER NOT NULL,
   FOREIGN KEY (location_id) REFERENCES locations (id)
-)
+);
+
+CREATE TABLE movies (
+  id SERIAL PRIMARY KEY, 
+  title VARCHAR(500),
+  released_on VARCHAR(500),
+  total_votes BIGINT, 
+  average_votes NUMERIC(3, 2),
+  popularity NUMERIC(10, 3),
+  overview TEXT,
+  image_url TEXT, 
+  created_at BIGINT, 
+  location_id INTEGER NOT NULL,
+  FOREIGN KEY (location_id) REFERENCES locations (id)
+);
+
