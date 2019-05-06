@@ -295,7 +295,9 @@ Yelp.prototype.save = function(id){
 };
 
 Yelp.fetchYelp = (location) => {
-  const url = `https://api.yelp.com/v3/businesses/search?location=${location.search_query}`;
+  // const url = `https://api.yelp.com/v3/businesses/search?location=${location.search_query}`;
+  const url = `https://api.yelp.com/v3/businesses/search?latitude=${location.latitude}&longitude=${location.longitude}`;
+
 
   return superagent.get(url)
     .set('Authorization', `Bearer ${process.env.YELP_API_KEY}`)
