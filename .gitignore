@@ -5,6 +5,15 @@ npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
 
+### Mac OS ###
+# General
+.DS_Store
+.AppleDouble
+.LSOverride
+
+# dotenv environment variables file
+.env
+
 # Runtime data
 pids
 *.pid
@@ -54,14 +63,6 @@ typings/
 # Yarn Integrity file
 .yarn-integrity
 
-# dotenv environment variables file
-.env
-
 # next.js build output
 .next
 
-### Mac OS ###
-# General
-.DS_Store
-.AppleDouble
-.LSOverride
