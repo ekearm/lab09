@@ -73,7 +73,7 @@ const timeouts = {
 
 let errorMessage = (error, response) => {
   console.error(error);
-  if (response) response.status(500).send('internal server error encountered');
+  if (response) response.status(500).send('Internal server error encountered');
 };
 
 //--------------------------------
@@ -189,6 +189,7 @@ function Events(location) {
   this.link = location.url;
   this.name = location.name.text;
   this.summary = location.summary;
+  this.created_at = Date.now();
 }
 Events.tableName = 'weathers';
 Events.lookup = lookup;
@@ -229,7 +230,7 @@ let searchCoords = (request, response) => {
     cacheHit: results => {
       console.log('Got data from DB');
       response.send(results.rows[0]);
-      
+
     },
     cacheMiss: () => {
       console.log('Fetching location....');
@@ -247,16 +248,16 @@ let searchWeather = (request, response) => {
     cacheHit: function(result){
       let ageOfRes = (Date.now() - result.rows[0].created_at);
       if (ageOfRes > timeouts.weather){
-        console.log('weather cash is invaild');
+        console.log('Weather cache is invaild');
         Weather.delByLocId(Weather.tableName, request.query.data.id);
         this.cacheMiss();
       }else {
-        console.log('Weather cash valid');
+        console.log('Weather cache valid');
         response.send(result.rows);
       }
     },
     cacheMiss: () => {
-      console.log('fetching weather');
+      console.log('Fetching weather...');
       Weather.fetchWeather(request.query.data)
         .then(results => response.send(results))
         .catch(console.error);
@@ -272,23 +273,23 @@ let seachEvents = (request, response) => {
     cacheHit: function(result){
       let ageOfRes = (Date.now() -result.rows[0].created_at);
       if (ageOfRes > timeouts.event){
-        console.log('event cash is invailid');
+        console.log('Event cache is invailid');
         Events.delByLocId(Events.tableName, request.query.data.id );
         this.cacheMiss();
       } else {
-        console.log('Events cash valid');
+        console.log('Events cache valid');
         response.send(result.rows);
       }
     },
     cacheMiss: () => {
-      console.log('fetching weather');
+      console.log('Fetching events...');
       Events.fetchEvent(request.query.data)
-      .then(results => response.send(results))
-      .catch(console.error);
+        .then(results => response.send(results))
+        .catch(console.error);
     }
-    };
-    Events.lookup(eventHandler);
   };
+  Events.lookup(eventHandler);
+};
 
 //--------------------------------
 // Routes

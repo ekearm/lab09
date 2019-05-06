@@ -1,4 +1,4 @@
-DROP TABLE IF EXISTS  weathers;
+DROP TABLE IF EXISTS weathers;
 DROP TABLE IF EXISTS events;
 DROP TABLE IF EXISTS locations;
 
